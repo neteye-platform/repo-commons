@@ -1,0 +1,12 @@
+name: Common Pull Request Checks
+
+on:
+  workflow_call:
+
+permissions: write-all
+
+jobs:
+  security-scan:
+    uses: ./.github/workflows/security-scan.yaml
+  pre-commit-checks:
+    uses: ./.github/workflows/pre-commit-checks.yaml

@@ -1,0 +1,40 @@
+# NOTE: This workflow will probably not work as expected until a GitHub App is used to authenticate the actions/stale action since it needs permissions to close issues and pull requests.
+
+name: Stale Check
+
+on:
+  workflow_call:
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale-check:
+    name: Stale Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark stale issues and pull requests
+        uses: actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f # v10.2.0
+        env:
+          DAYS_BEFORE_STALE: 30
+          DAYS_BEFORE_CLOSE: 7
+        with:
+          # TODO: add GitHub App token
+          days-before-stale: ${{ env.DAYS_BEFORE_STALE }}
+          days-before-close: ${{ env.DAYS_BEFORE_CLOSE }}
+          stale-issue-message: >
+            This issue has been automatically marked as stale because it has not had recent activity.
+            It will be closed if no further activity occurs within ${{ env.DAYS_BEFORE_CLOSE }} days.
+          stale-pr-message: >
+            This pull request has been automatically marked as stale because it has not had recent activity.
+            It will be closed if no further activity occurs within ${{ env.DAYS_BEFORE_CLOSE }} days.
+          close-issue-message: >
+            This issue has been automatically closed because it has not had recent activity.
+            If you think this issue should remain open, please comment on it.
+          close-pr-message: >
+            This pull request has been automatically closed because it has not had recent activity.
+            If you think this pull request should remain open, please comment on it.
+          delete-branch: true

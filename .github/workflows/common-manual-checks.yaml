@@ -1,0 +1,15 @@
+name: Common Manual Checks
+
+on:
+  workflow_call:
+
+permissions: write-all
+
+jobs:
+  # template-sync:
+  #   uses: ./.github/workflows/template-sync.yaml
+  empty-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No manual checks defined
+        run: echo "No manual checks defined."

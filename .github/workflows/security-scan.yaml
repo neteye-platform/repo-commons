@@ -1,0 +1,47 @@
+name: Security Scan
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep-scan:
+    name: Semgrep Scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:1.153.1@sha256:50b839b576d76426efd3e5cffda2db0d8c403f53aa76e91d42ccf51485ac336c
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Semgrep scan and generate SARIF report
+        run: semgrep scan --config auto --sarif >semgrep.sarif
+
+      - name: Upload Semgrep SARIF file for GitHub Advanced Security Dashboard
+        uses: github/codeql-action/upload-sarif@c793b717bc78562f491db7b0e93a3a178b099162 # v4.32.5
+        with:
+          sarif_file: semgrep.sarif
+
+  trivy-scan:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Trivy scan and generate SARIF report
+        uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # 0.34.2
+        with:
+          scan-type: "fs"
+          severity: "MEDIUM,HIGH,CRITICAL"
+          exit-code: "1"
+          format: "sarif"
+          output: "trivy.sarif"
+
+      - name: Upload Trivy SARIF file for GitHub Advanced Security Dashboard
+        uses: github/codeql-action/upload-sarif@c793b717bc78562f491db7b0e93a3a178b099162 # v4.32.5
+        with:
+          sarif_file: trivy.sarif

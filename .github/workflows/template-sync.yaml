@@ -1,0 +1,41 @@
+# NOTE: This workflow currently doesn't work since a GitHub App is needed to create pull requests from a workflow.
+
+name: Template Sync
+
+on:
+  workflow_call:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  template-sync:
+    name: Template Sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Add template remote
+        run: |
+          git remote add template https://github.com/neteye-platform/default-repository-template.git
+          git fetch template
+
+      - name: Sync with template repository
+        run: |
+          # create-pull-request action will override username and email but we need to set it here for the merge commit
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge template/main --allow-unrelated-histories -m "feat: sync with template repository" --strategy-option=theirs
+
+      - name: Create or update PR
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
+        with:
+          # TODO: add GitHub App token
+          branch: automatic-template-sync
+          title: "Template | Sync"
+          sign-commits: true

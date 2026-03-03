@@ -1,0 +1,24 @@
+# NOTE: This workflow runs pre-commit checks with prek in workspace mode.
+# When prek will introduce a way to import pre-commit configurations from other repositories (https://github.com/j178/prek/issues/1238)
+# we can centralize all pre-commit checks in the repo-commons repository and reference the configuration file from there.
+
+name: Pre-commit Checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit-checks:
+    name: Pre-commit Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run common pre-commit checks
+        uses: j178/prek-action@0bb87d7f00b0c99306c8bcb8b8beba1eb581c037 # v1.1.1
+        with:
+          extra-args: "--all-files --refresh"
