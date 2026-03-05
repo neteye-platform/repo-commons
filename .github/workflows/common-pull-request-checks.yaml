@@ -2,11 +2,16 @@ name: Common Pull Request Checks
 
 on:
   workflow_call:
+  pull_request:
+    branches:
+      - "*"
 
 permissions: write-all
 
 jobs:
-  security-scan:
-    uses: ./.github/workflows/security-scan.yaml
+  sempgrep-scan:
+    uses: ./.github/workflows/semgrep-scan.yaml
+  trivy-scan:
+    uses: ./.github/workflows/trivy-scan.yaml
   pre-commit-checks:
     uses: ./.github/workflows/pre-commit-checks.yaml

@@ -2,6 +2,7 @@ name: Common Manual Checks
 
 on:
   workflow_call:
+  workflow_dispatch:
 
 permissions: write-all
 

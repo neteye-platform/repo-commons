@@ -1,4 +1,5 @@
-# NOTE: This workflow will probably not work as expected until a GitHub App is used to authenticate the actions/stale action since it needs permissions to close issues and pull requests.
+# NOTE: This workflow will probably not work as expected until a GitHub App is used to authenticate
+# the actions/stale action since it needs permissions to close issues and pull requests.
 
 name: Stale Check
 
