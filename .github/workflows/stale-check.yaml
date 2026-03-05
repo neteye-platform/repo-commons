@@ -26,6 +26,8 @@ jobs:
           # TODO: add GitHub App token
           days-before-stale: ${{ env.DAYS_BEFORE_STALE }}
           days-before-close: ${{ env.DAYS_BEFORE_CLOSE }}
+          exempt-issue-labels: "no-stale"
+          exempt-pr-labels: "no-stale"
           stale-issue-message: >
             This issue has been automatically marked as stale because it has not had recent activity.
             It will be closed if no further activity occurs within ${{ env.DAYS_BEFORE_CLOSE }} days.
