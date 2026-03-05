@@ -6,8 +6,10 @@ on:
 permissions: write-all
 
 jobs:
-  security-scan:
-    uses: ./.github/workflows/security-scan.yaml
+  sempgrep-scan:
+    uses: ./.github/workflows/semgrep-scan.yaml
+  trivy-scan:
+    uses: ./.github/workflows/trivy-scan.yaml
   stale-check:
     uses: ./.github/workflows/stale-check.yaml
   # template-sync:
