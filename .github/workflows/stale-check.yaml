@@ -1,6 +1,3 @@
-# NOTE: This workflow will probably not work as expected until a GitHub App is used to authenticate
-# the actions/stale action since it needs permissions to close issues and pull requests.
-
 name: Stale Check
 
 on:
@@ -23,7 +20,6 @@ jobs:
           DAYS_BEFORE_STALE: 30
           DAYS_BEFORE_CLOSE: 7
         with:
-          # TODO: add GitHub App token
           days-before-stale: ${{ env.DAYS_BEFORE_STALE }}
           days-before-close: ${{ env.DAYS_BEFORE_CLOSE }}
           exempt-issue-labels: "no-stale"
