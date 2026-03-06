@@ -1,41 +1,51 @@
-# NOTE: This workflow currently doesn't work since a GitHub App is needed to create pull requests from a workflow.
-
 name: Template Sync
 
 on:
   workflow_call:
 
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   template-sync:
     name: Template Sync
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App token
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        id: generate-token
+        with:
+          app-id: ${{ vars.NETEYE_APP_ID }}
+          private-key: ${{ secrets.NETEYE_APP_PRIVATE_KEY }}
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # HACK: Find a better way to sync the template without losing customizations.
+      - name: actions-template-sync
+        uses: AndreasAugustin/actions-template-sync@8ec19a5f2721ffb81ff809aa340ddf75e6a85ea6 # v2.5.2
         with:
-          fetch-depth: 0
+          source_repo_path: neteye-platform/default-repository-template
+          git_remote_pull_params: --allow-unrelated-histories --squash --strategy=recursive --no-tags --strategy-option theirs
+          steps: "prechecks,pull" # Stop before committing since this action does not sign commits using the GitHub App token
 
-      - name: Add template remote
-        run: |
-          git remote add template https://github.com/neteye-platform/default-repository-template.git
-          git fetch template
-
-      - name: Sync with template repository
-        run: |
-          # create-pull-request action will override username and email but we need to set it here for the merge commit
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git merge template/main --allow-unrelated-histories -m "feat: sync with template repository" --strategy-option=theirs
+      - name: Checkout main branch to ensure the PR is created against the correct base branch
+        run: git checkout main
 
       - name: Create or update PR
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
         with:
-          # TODO: add GitHub App token
+          token: ${{ steps.generate-token.outputs.token }}
           branch: automatic-template-sync
-          title: "Template | Sync"
+          title: "chore(template): sync with template repository"
+          commit-message: "chore(template): sync with template repository"
+          body: |
+            This PR updates the repository to the latest version of the template:
+
+            `neteye-platform/default-repository-template`
+
+            The update is generated automatically by the template sync workflow.
+
+            Please review the changes before merging to ensure repository-specific customizations are preserved.
           sign-commits: true
+          delete-branch: true
