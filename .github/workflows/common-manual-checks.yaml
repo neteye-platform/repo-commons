@@ -9,3 +9,4 @@ permissions: write-all
 jobs:
   template-sync:
     uses: ./.github/workflows/template-sync.yaml
+    secrets: inherit
