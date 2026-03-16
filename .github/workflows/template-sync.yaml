@@ -2,6 +2,11 @@ name: Template Sync
 
 on:
   workflow_call:
+    inputs:
+      template_repo:
+        description: "The template repository to sync with. Format: owner/repo"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -25,7 +30,7 @@ jobs:
       - name: actions-template-sync
         uses: AndreasAugustin/actions-template-sync@8ec19a5f2721ffb81ff809aa340ddf75e6a85ea6 # v2.5.2
         with:
-          source_repo_path: neteye-platform/default-repository-template
+          source_repo_path: ${{ inputs.template_repo }}
           git_remote_pull_params: --allow-unrelated-histories --squash --strategy=recursive --no-tags --strategy-option theirs
           steps: "prechecks,pull" # Stop before committing since this action does not sign commits using the GitHub App token
 
@@ -42,7 +47,7 @@ jobs:
           body: |
             This PR updates the repository to the latest version of the template:
 
-            `neteye-platform/default-repository-template`
+            `${{ inputs.template_repo }}`
 
             The update is generated automatically by the template sync workflow.
 

@@ -2,11 +2,35 @@ name: Common Manual Checks
 
 on:
   workflow_call:
+    inputs:
+      jobs_to_run:
+        description: |
+          Comma-separated list of jobs to run. Default is 'all'.
+          Refer to https://github.com/neteye-platform/repo-commons/blob/main/.github/workflows/common-manual-checks.yaml
+        required: false
+        default: all
+        type: string
+      template_repo:
+        description: "The template repository to sync with. Format: owner/repo"
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      jobs_to_run:
+        description: |
+          Comma-separated list of jobs to run. Default is 'all'.
+          Refer to https://github.com/neteye-platform/repo-commons/blob/main/.github/workflows/common-manual-checks.yaml
+        required: false
+        default: all
+        type: string
 
 permissions: write-all
 
 jobs:
   template-sync:
+    if: ${{ contains(inputs.jobs_to_run, 'all') || contains(inputs.jobs_to_run, 'template-sync') }}
     uses: ./.github/workflows/template-sync.yaml
     secrets: inherit
+    # Enforce template_repo input for workflow_call, but allow default for this repository
+    with:
+      template_repo: ${{ github.event_name == 'workflow_call' && inputs.template_repo || 'neteye-platform/default-repository-template' }}
