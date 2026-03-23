@@ -75,12 +75,12 @@ repos:
       - id: hadolint-docker
 
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: 5387279b3b4c24822c0f86d4df4f28b37e3e8992 # frozen: v0.21.0
+    rev: 3766ad839ad3a74558031510b3bc9872bb1d9980 # frozen: v0.22.0
     hooks:
       - id: markdownlint-cli2
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: 032e040de100abae9869a9da32538474deba68bf # frozen: 43.84.2
+    rev: 8c1eeecc5ffed2694436e385b2c69e8f786933e6 # frozen: 43.86.1
     hooks:
       - id: renovate-config-validator
         args: [--strict]
