@@ -3,6 +3,7 @@
   "extends": [
     "config:best-practices",
     "group:allNonMajor",
+    "mergeConfidence:all-badges",
     "security:openssf-scorecard",
     ":enablePreCommit",
     ":disableDependencyDashboard"
