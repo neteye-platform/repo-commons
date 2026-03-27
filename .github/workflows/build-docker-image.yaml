@@ -1,0 +1,82 @@
+name: Build Docker Image
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "The working directory to run the workflow in. E.g. `.`."
+        required: true
+        type: string
+      dockerfile-path:
+        description: "The path to the Dockerfile to build. E.g. `./Dockerfile`."
+        required: true
+        type: string
+      image-name:
+        description: "The name of the image to build. E.g. `ghcr.io/owner/repo/image`."
+        required: true
+        type: string
+      push:
+        description: "Whether to push the built image to the registry."
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build-docker-image:
+    runs-on: ubuntu-latest
+    outputs:
+      image-digest: ${{ steps.docker-build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate GitHub App token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        id: generate-token
+        with:
+          app-id: ${{ vars.NETEYE_APP_ID }}
+          private-key: ${{ secrets.NETEYE_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-packages: write
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ steps.generate-token.outputs.token }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ${{ inputs.image-name }}
+          tags: type=semver,pattern={{version}}
+
+      - name: Build and push image
+        id: docker-build
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          DOCKERFILE_PATH: ${{ inputs.dockerfile-path }}
+        with:
+          context: "$WORKING_DIRECTORY"
+          file: "$DOCKERFILE_PATH"
+          push: ${{ inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          outputs: type=docker,dest=image.tar
+
+      - name: Upload image
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: "${{ inputs.image-name }}-image"
+          path: image.tar
+          retention-days: 1
