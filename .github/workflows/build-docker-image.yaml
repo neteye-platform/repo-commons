@@ -26,8 +26,6 @@ permissions:
 jobs:
   build-docker-image:
     runs-on: ubuntu-latest
-    outputs:
-      image-digest: ${{ steps.docker-build.outputs.digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -58,8 +56,8 @@ jobs:
           images: ${{ inputs.image-name }}
           tags: type=semver,pattern={{version}}
 
-      - name: Build and push image
-        id: docker-build
+      - name: Build image
+        if: ${{ !inputs.push }}
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         env:
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
@@ -67,15 +65,28 @@ jobs:
         with:
           context: "$WORKING_DIRECTORY"
           file: "$DOCKERFILE_PATH"
-          push: ${{ inputs.push }}
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=docker,dest=${{ runner.temp }}/image.tar
+
+      - name: Build and push image
+        if: ${{ inputs.push }}
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          DOCKERFILE_PATH: ${{ inputs.dockerfile-path }}
+        with:
+          context: "$WORKING_DIRECTORY"
+          file: "$DOCKERFILE_PATH"
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: mode=max
           sbom: true
-          platforms: linux/amd64
-          outputs: type=docker,dest=image.tar
 
       - name: Upload image
+        if: ${{ !inputs.push }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: "${{ inputs.image-name }}-image"
