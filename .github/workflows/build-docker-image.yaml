@@ -59,12 +59,9 @@ jobs:
       - name: Build image
         if: ${{ !inputs.push }}
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
-        env:
-          WORKING_DIRECTORY: ${{ inputs.working-directory }}
-          DOCKERFILE_PATH: ${{ inputs.dockerfile-path }}
         with:
-          context: "$WORKING_DIRECTORY"
-          file: "$DOCKERFILE_PATH"
+          context: ${{ inputs.working-directory }}
+          file: ${{ inputs.dockerfile-path }}
           push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -73,12 +70,9 @@ jobs:
       - name: Build and push image
         if: ${{ inputs.push }}
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
-        env:
-          WORKING_DIRECTORY: ${{ inputs.working-directory }}
-          DOCKERFILE_PATH: ${{ inputs.dockerfile-path }}
         with:
-          context: "$WORKING_DIRECTORY"
-          file: "$DOCKERFILE_PATH"
+          context: ${{ inputs.working-directory }}
+          file: ${{ inputs.dockerfile-path }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
