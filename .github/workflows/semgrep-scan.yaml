@@ -19,9 +19,19 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run Semgrep scan and generate SARIF report
-        run: semgrep scan --config auto --sarif >semgrep.sarif
+        run: semgrep scan --config auto --text-output=semgrep.txt --sarif-output=semgrep.sarif
+
+      - name: Upload Semgrep txt file as artifact
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          path: semgrep.txt
+          archive: false
+          retention-days: 7
 
       - name: Upload Semgrep SARIF file for GitHub Advanced Security Dashboard
+        if: always()
         uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           sarif_file: semgrep.sarif
+        continue-on-error: true
