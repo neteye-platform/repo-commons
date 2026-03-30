@@ -71,6 +71,7 @@ jobs:
         if: ${{ inputs.push }}
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
+          github-token: ${{ steps.generate-token.outputs.token }}
           context: ${{ inputs.working-directory }}
           file: ${{ inputs.dockerfile-path }}
           push: true
