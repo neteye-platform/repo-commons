@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   build-docker-image:
@@ -29,15 +30,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Generate GitHub App token
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
-        id: generate-token
-        with:
-          app-id: ${{ vars.NETEYE_APP_ID }}
-          private-key: ${{ secrets.NETEYE_APP_PRIVATE_KEY }}
-          permission-contents: read
-          permission-packages: write
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
@@ -47,7 +39,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ steps.generate-token.outputs.token }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
@@ -71,7 +63,6 @@ jobs:
         if: ${{ inputs.push }}
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
-          github-token: ${{ steps.generate-token.outputs.token }}
           context: ${{ inputs.working-directory }}
           file: ${{ inputs.dockerfile-path }}
           push: true
