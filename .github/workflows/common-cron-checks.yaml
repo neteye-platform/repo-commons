@@ -14,6 +14,7 @@ jobs:
     uses: ./.github/workflows/trivy-scan.yaml
   stale-check:
     uses: ./.github/workflows/stale-check.yaml
+    secrets: inherit
 
   # NOTE: At the moment, the template sync workflow is not suitable for running on a schedule since it completely replace
   # the files present in the repository with the ones from the template, which would lead to loss of any customizations made in the repository.
