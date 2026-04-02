@@ -8,6 +8,8 @@ on:
 permissions: write-all
 
 jobs:
+  codeql-scan:
+    uses: ./.github/workflows/codeql-scan.yaml
   sempgrep-scan:
     uses: ./.github/workflows/semgrep-scan.yaml
   trivy-scan:
