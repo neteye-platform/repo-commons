@@ -9,8 +9,8 @@ permissions:
   actions: read
 
 jobs:
-  trivy-scan:
-    name: Trivy Scan
+  trivy-fs-scan:
+    name: Trivy FS Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -21,7 +21,7 @@ jobs:
       # Do not fail on the first scan to ensure the second scan runs and generates the txt report,
       # which is uploaded as an artifact for further analysis.
       # Tracking issue: https://github.com/aquasecurity/trivy-action/issues/432
-      - name: Run Trivy scan and generate SARIF report
+      - name: Run fs Trivy scan and generate SARIF report
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: "fs"
@@ -29,9 +29,9 @@ jobs:
           severity: "MEDIUM,HIGH,CRITICAL"
           exit-code: "0"
           format: "sarif"
-          output: "trivy.sarif"
+          output: "trivy_fs.sarif"
 
-      - name: Run Trivy scan and generate txt report
+      - name: Run fs Trivy scan and generate txt report
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: "fs"
@@ -39,23 +39,76 @@ jobs:
           severity: "MEDIUM,HIGH,CRITICAL"
           exit-code: "1"
           format: "table"
-          output: "trivy.txt"
+          output: "trivy_fs.txt"
           skip-setup-trivy: true
-
-      - name: Upload Trivy txt file as artifact
-        if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: trivy-scan
-          path: trivy.txt
-          # NOTE: Currently GitHub open the file in the browser when using `archive: false`, but it is not readable.
-          # Tracking issue: https://github.com/actions/upload-artifact/issues/772
-          # archive: false
-          retention-days: 7
 
       - name: Upload Trivy SARIF file for GitHub Advanced Security Dashboard
         if: always()
         uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
-          sarif_file: trivy.sarif
+          sarif_file: trivy_fs.sarif
         continue-on-error: true
+
+      - name: Upload Trivy txt file as artifact
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: trivy-fs-scan
+          path: trivy_fs.txt
+          # NOTE: Currently GitHub open the file in the browser when using `archive: false`, but it is not readable.
+          # Tracking issue: https://github.com/actions/upload-artifact/issues/772
+          # archive: false
+          retention-days: 7
+
+  trivy-config-scan:
+    name: Trivy Config Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # NOTE: Run Trivy scan twice to generate both SARIF and txt reports, as the action
+      # currently does not support generating multiple formats in a single run.
+      # Do not fail on the first scan to ensure the second scan runs and generates the txt report,
+      # which is uploaded as an artifact for further analysis.
+      # Tracking issue: https://github.com/aquasecurity/trivy-action/issues/432
+      - name: Run config Trivy scan and generate SARIF report
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: "config"
+          scan-ref: "."
+          severity: "MEDIUM,HIGH,CRITICAL"
+          exit-code: "0"
+          hide-progress: true
+          format: "sarif"
+          output: "trivy_config.sarif"
+
+      - name: Run config Trivy scan and generate txt report
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: "config"
+          scan-ref: "."
+          severity: "MEDIUM,HIGH,CRITICAL"
+          exit-code: "1"
+          hide-progress: true
+          format: "table"
+          output: "trivy_config.txt"
+          skip-setup-trivy: true
+
+      - name: Upload Trivy SARIF file for GitHub Advanced Security Dashboard
+        if: always()
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        with:
+          sarif_file: trivy_config.sarif
+        continue-on-error: true
+
+      - name: Upload Trivy txt file as artifact
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: trivy-config-scan
+          path: trivy_config.txt
+          # NOTE: Currently GitHub open the file in the browser when using `archive: false`, but it is not readable.
+          # Tracking issue: https://github.com/actions/upload-artifact/issues/772
+          # archive: false
+          retention-days: 7
