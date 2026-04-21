@@ -19,7 +19,14 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run Semgrep scan and generate reports
-        run: semgrep scan --config auto --error --text-output=semgrep.txt --sarif-output=semgrep.sarif
+        run: |
+          # shellcheck disable=SC2046
+          semgrep scan \
+            --config auto \
+            --error \
+            --text-output=semgrep.txt \
+            --sarif-output=semgrep.sarif \
+            $([ -f .semgrepignorerule ] && sed 's/^/--exclude-rule /' .semgrepignorerule)
 
       - name: Upload Semgrep txt file as artifact
         if: always()
