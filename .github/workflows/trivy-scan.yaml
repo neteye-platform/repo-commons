@@ -22,7 +22,7 @@ jobs:
       # which is uploaded as an artifact for further analysis.
       # Tracking issue: https://github.com/aquasecurity/trivy-action/issues/432
       - name: Run fs Trivy scan and generate SARIF report
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -32,7 +32,7 @@ jobs:
           output: "trivy_fs.sarif"
 
       - name: Run fs Trivy scan and generate txt report
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -73,7 +73,7 @@ jobs:
       # which is uploaded as an artifact for further analysis.
       # Tracking issue: https://github.com/aquasecurity/trivy-action/issues/432
       - name: Run config Trivy scan and generate SARIF report
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "config"
           scan-ref: "."
@@ -84,7 +84,7 @@ jobs:
           output: "trivy_config.sarif"
 
       - name: Run config Trivy scan and generate txt report
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "config"
           scan-ref: "."
