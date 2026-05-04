@@ -17,3 +17,5 @@ jobs:
     uses: ./.github/workflows/trivy-scan.yaml
   pre-commit-checks:
     uses: ./.github/workflows/pre-commit-checks.yaml
+  validate-pr-title:
+    uses: ./.github/workflows/validate-pr-title.yaml
