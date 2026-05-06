@@ -4,11 +4,15 @@ on:
   workflow_call:
 
 permissions:
-  contents: none
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
   stale-check:
     name: Stale Check
+    if: github.repository_owner == 'neteye-platform'
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App token
@@ -28,7 +32,7 @@ jobs:
           DAYS_BEFORE_STALE: 30
           DAYS_BEFORE_CLOSE: 7
         with:
-          repo-token: ${{ steps.generate-token.outputs.token }}
+          repo-token: ${{ steps.generate-token.outputs.token || github.token }}
           days-before-stale: ${{ env.DAYS_BEFORE_STALE }}
           days-before-close: ${{ env.DAYS_BEFORE_CLOSE }}
           exempt-issue-labels: "no-stale"
