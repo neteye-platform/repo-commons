@@ -10,7 +10,7 @@ permissions: write-all
 jobs:
   codeql-scan:
     uses: ./.github/workflows/codeql-scan.yaml
-  sempgrep-scan:
+  semgrep-scan:
     uses: ./.github/workflows/semgrep-scan.yaml
   trivy-scan:
     uses: ./.github/workflows/trivy-scan.yaml

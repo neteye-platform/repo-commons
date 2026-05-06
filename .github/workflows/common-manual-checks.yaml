@@ -27,6 +27,23 @@ on:
 permissions: write-all
 
 jobs:
+  codeql-scan:
+    if: ${{ contains(inputs.jobs_to_run, 'all') || contains(inputs.jobs_to_run, 'codeql-scan') }}
+    uses: ./.github/workflows/codeql-scan.yaml
+
+  semgrep-scan:
+    if: ${{ contains(inputs.jobs_to_run, 'all') || contains(inputs.jobs_to_run, 'semgrep-scan') }}
+    uses: ./.github/workflows/semgrep-scan.yaml
+
+  trivy-scan:
+    if: ${{ contains(inputs.jobs_to_run, 'all') || contains(inputs.jobs_to_run, 'trivy-scan') }}
+    uses: ./.github/workflows/trivy-scan.yaml
+
+  stale-check:
+    if: ${{ contains(inputs.jobs_to_run, 'all') || contains(inputs.jobs_to_run, 'stale-check') }}
+    uses: ./.github/workflows/stale-check.yaml
+    secrets: inherit
+
   template-sync:
     if: ${{ contains(inputs.jobs_to_run, 'all') || contains(inputs.jobs_to_run, 'template-sync') }}
     uses: ./.github/workflows/template-sync.yaml
