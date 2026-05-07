@@ -27,6 +27,7 @@ jobs:
           scan-type: "fs"
           scan-ref: "."
           severity: "MEDIUM,HIGH,CRITICAL"
+          limit-severities-for-sarif: true
           exit-code: "0"
           format: "sarif"
           output: "trivy_fs.sarif"
@@ -78,6 +79,7 @@ jobs:
           scan-type: "config"
           scan-ref: "."
           severity: "MEDIUM,HIGH,CRITICAL"
+          limit-severities-for-sarif: true
           exit-code: "0"
           hide-progress: true
           format: "sarif"
