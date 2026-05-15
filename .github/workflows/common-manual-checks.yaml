@@ -40,4 +40,4 @@ jobs:
     uses: ./.github/workflows/template-sync.yaml
     secrets: inherit
     with:
-      template_repo: ${{ github.event_name == 'workflow_call' && inputs.template_repo }}
+      template_repo: ${{ inputs.template_repo }}
