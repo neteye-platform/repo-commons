@@ -2,9 +2,6 @@ name: Common Pull Request Checks
 
 on:
   workflow_call:
-  pull_request:
-    branches:
-      - "**"
 
 permissions: write-all
 
