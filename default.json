@@ -7,6 +7,7 @@
     "mergeConfidence:all-badges",
     "security:openssf-scorecard",
     ":enablePreCommit",
+    ":semanticCommits",
     ":disableDependencyDashboard"
   ],
 
