@@ -19,14 +19,31 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Run Semgrep scan and generate reports
+        shell: bash
+        env:
+          SEMGREP_EXCLUDED_RULES: |
+            yaml.github-actions.security.secrets-inherit.secrets-inherit
         run: |
-          # shellcheck disable=SC2046
+          EXCLUDE_RULE_ARGS=()
+
+          while read -r rule; do
+              [[ -z "$rule" ]] && continue
+              EXCLUDE_RULE_ARGS+=(--exclude-rule "$rule")
+          done <<<"$SEMGREP_EXCLUDED_RULES"
+
+          if [[ -f .semgrepignorerule ]]; then
+              while read -r rule; do
+                  [[ -z "$rule" ]] && continue
+                  EXCLUDE_RULE_ARGS+=(--exclude-rule "$rule")
+              done <.semgrepignorerule
+          fi
+
           semgrep scan \
-            --config auto \
-            --error \
-            --text-output=semgrep.txt \
-            --sarif-output=semgrep.sarif \
-            $([ -f .semgrepignorerule ] && sed 's/^/--exclude-rule /' .semgrepignorerule)
+              --config auto \
+              --error \
+              --text-output=semgrep.txt \
+              --sarif-output=semgrep.sarif \
+              "${EXCLUDE_RULE_ARGS[@]}"
 
       - name: Upload Semgrep txt file as artifact
         if: always()
