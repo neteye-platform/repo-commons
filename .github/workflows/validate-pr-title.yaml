@@ -9,6 +9,8 @@ permissions:
 jobs:
   validate-pr-title:
     name: Validate PR Title
+    # Conditionally run this job to report as succeeded in the merge_group event
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Validate PR Title
