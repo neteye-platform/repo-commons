@@ -15,5 +15,7 @@
 
   "vulnerabilityAlerts": {
     "addLabels": ["security"]
-  }
+  },
+
+  "prHourlyLimit": 5
 }
