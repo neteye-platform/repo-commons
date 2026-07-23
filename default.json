@@ -4,6 +4,7 @@
     "config:best-practices",
     ":pinDependencies",
     "group:allNonMajor",
+    "group:allDigest",
     "mergeConfidence:all-badges",
     "security:openssf-scorecard",
     ":enablePreCommit",
@@ -17,5 +18,8 @@
     "addLabels": ["security"]
   },
 
-  "prHourlyLimit": 5
+  "prConcurrentLimit": 0,
+  "prHourlyLimit": 5,
+
+  "timezone": "UTC"
 }
