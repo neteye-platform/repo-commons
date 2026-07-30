@@ -52,7 +52,7 @@ repos:
       - id: shellcheck
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 2700fd5671c633760d912769c041bfcde2b9a01b # frozen: v0.15.22
+    rev: cb8c523fd4835aba42af70f4cad5568db4df0b6c # frozen: v0.16.0
     hooks:
       - id: ruff-check
         args:
@@ -60,7 +60,7 @@ repos:
       - id: ruff-format
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 69e5d7b46d7a93b633431a498a46cf3a8a2181f4 # frozen: 0.11.31
+    rev: 5900cba2cfe6d20f562458d4d308ac55569f92eb # frozen: 0.12.0
     hooks:
       - id: uv-lock
 
@@ -75,7 +75,7 @@ repos:
       - id: hadolint-docker
 
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: 06f92c99e930c11230426b5edd775021d25e08a8 # frozen: v0.23.1
+    rev: b82a6c8896e491b9cb377a99ff3412131920681b # frozen: v0.23.2
     hooks:
       - id: markdownlint-cli2
 
