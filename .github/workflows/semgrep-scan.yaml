@@ -1,3 +1,18 @@
+# Reusable workflow: run a Semgrep static analysis scan, upload the SARIF report
+# to the GitHub Advanced Security dashboard and the text log as an artifact. No
+# inputs.
+#
+# Trigger it from a topic workflow, e.g.:
+#
+#   name: Semgrep
+#   on:
+#     pull_request:
+#     push:
+#       branches: [main]
+#   jobs:
+#     semgrep:
+#       uses: neteye-platform/repo-commons/.github/workflows/semgrep-scan.yaml@main
+
 name: Semgrep Scan
 
 on:

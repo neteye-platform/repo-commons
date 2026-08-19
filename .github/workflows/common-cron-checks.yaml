@@ -1,3 +1,16 @@
+# Reusable workflow: run all scheduled checks in one call. No inputs.
+#
+# Trigger it from a topic workflow, e.g.:
+#
+#   name: Cron Checks
+#   on:
+#     schedule:
+#       - cron: "0 0 * * *"
+#   jobs:
+#     checks:
+#       uses: neteye-platform/repo-commons/.github/workflows/common-cron-checks.yaml@main
+#       secrets: inherit
+
 name: Common Cron Checks
 
 on:

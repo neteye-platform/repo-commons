@@ -1,3 +1,18 @@
+# Reusable workflow: run Trivy filesystem and infrastructure (config) scans,
+# uploading SARIF reports to the GitHub Advanced Security dashboard and the text
+# logs as artifacts. No inputs.
+#
+# Trigger it from a topic workflow, e.g.:
+#
+#   name: Trivy
+#   on:
+#     pull_request:
+#     push:
+#       branches: [main]
+#   jobs:
+#     trivy:
+#       uses: neteye-platform/repo-commons/.github/workflows/trivy-scan.yaml@main
+
 name: Trivy Scan
 
 on:

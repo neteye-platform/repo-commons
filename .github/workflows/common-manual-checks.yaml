@@ -1,3 +1,23 @@
+# Reusable workflow: run the manual checks, choosing which to execute: all or a subset.
+#
+# Trigger it from a topic workflow:
+#
+#   name: Manual Checks
+#   on:
+#     workflow_dispatch:
+#   jobs:
+#     checks:
+#       uses: neteye-platform/repo-commons/.github/workflows/common-manual-checks.yaml@main
+#       secrets: inherit
+#       with:
+#         jobs_to_run: all        # or a comma-separated subset
+#         template_repo: owner/template
+#
+# Inputs:
+#   jobs_to_run:   comma-separated jobs to run, or 'all' (default).
+#   template_repo: template repository to sync with, format owner/repo
+#                  (required).
+
 name: Common Manual Checks
 
 on:

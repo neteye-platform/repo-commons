@@ -1,3 +1,28 @@
+# Reusable workflow: sync the repository files from a template repository,
+# opening (or updating) a pull request.
+#
+# Trigger it from a topic workflow:
+#
+#   name: Template Sync
+#   on:
+#     workflow_dispatch:
+#   jobs:
+#     sync:
+#       uses: neteye-platform/repo-commons/.github/workflows/template-sync.yaml@main
+#       secrets: inherit
+#       with:
+#         template_repo: owner/template
+#
+# Input:
+#   template_repo: template repository to sync with, format owner/repo
+#                  (required).
+#
+# 'secrets: inherit' is required: the workflow uses the NETEYE_APP_ID variable
+#   and NETEYE_APP_PRIVATE_KEY secret of the NetEye Steward GitHub App.
+#
+# Note: this replaces repository files with the template ones, so trigger it
+#   manually (workflow_dispatch) to avoid losing repository customizations.
+
 name: Template Sync
 
 on:

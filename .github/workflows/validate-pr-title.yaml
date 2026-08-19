@@ -1,3 +1,18 @@
+# Reusable workflow: validate the pull request title against the Conventional
+# Commits convention. No inputs.
+#
+# Trigger it from a topic workflow, e.g.:
+#
+#   name: Validate PR Title
+#   on:
+#     pull_request_target:
+#       types: [opened, edited, reopened, synchronize]
+#   jobs:
+#     validate:
+#       uses: neteye-platform/repo-commons/.github/workflows/validate-pr-title.yaml@main
+#
+# On merge_group events the job is skipped (so it does not block merges).
+
 name: Validate PR Title
 
 on:
@@ -9,7 +24,7 @@ permissions:
 jobs:
   validate-pr-title:
     name: Validate PR Title
-    # Conditionally run this job to report as succeeded in the merge_group event
+    # Skipped on merge_group events so it does not block merges.
     if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
