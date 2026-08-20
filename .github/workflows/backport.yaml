@@ -25,10 +25,22 @@
 # Behaviour:
 #   - The pull request must be merged; otherwise the run is skipped with a
 #     warning.
-#   - The comment author needs write access (or higher); otherwise the run is
-#     skipped with a warning.
-#   - When a cherry-pick conflicts, a draft pull request is created instead of
-#     failing the run.
+#   - The comment author needs write access (or higher); otherwise the
+#     authorize-requester job skips the whole run.
+#   - The source pull request must not have changed after the backport comment,
+#     or the run is skipped with a warning.
+#   - For each target branch the changes of the source pull request are applied
+#     as a single new commit, signed by the GitHub App via the git database
+#     API, and a backport pull request is created.
+#   - The backport pull request keeps the source title (already a conventional
+#     commit message) and targets the source pull request in its body.
+#   - When applying the changes conflicts, a draft pull request is created so a
+#     human can resolve it, and a comment is posted on the source pull request
+#     with a link to the backport.
+#
+# Security: never checks out or executes the source pull request head; it only
+#   applies its merge commit via git operations. Requires write access and that
+#   the pull request hasn't changed since the comment.
 #
 # Secrets: the workflow uses the NETEYE_APP_ID variable and the
 #   NETEYE_APP_PRIVATE_KEY secret of the neteye steward GitHub App, and falls
@@ -39,18 +51,21 @@ name: Backport
 on:
   workflow_call:
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
-  backport:
-    name: Backport merged pull request
+  determine-targets:
+    name: Determine backport targets
     if: >
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/backport')
+      startsWith(github.event.comment.body, '/backport') &&
+      contains(fromJSON('["COLLABORATOR","MEMBER","OWNER"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      target_list: ${{ steps.targets.outputs.target_list }}
+      pr_title: ${{ steps.targets.outputs.pr_title }}
     steps:
       - name: Generate GitHub App token
         if: github.repository_owner == 'neteye-platform'
@@ -74,27 +89,16 @@ jobs:
           # Source pull request number, present for an issue_comment on a PR.
           PR_NUMBER: ${{ github.event.issue.number }}
           COMMENT_BODY: ${{ github.event.comment.body }}
-          COMMENTER: ${{ github.event.comment.user.login }}
           COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_AT: ${{ github.event.comment.created_at }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
         run: |
           set -euo pipefail
 
           skip() {
             echo "::warning::$1"
-            echo "target_branches=" >> "$GITHUB_OUTPUT"
+            echo "target_list=[]" >> "$GITHUB_OUTPUT"
             exit 0
-          }
-
-          check_write_access() {
-            local user="$1" perm
-            # The endpoint returns the legacy base level (admin | write | read |
-            # none), where granular roles such as maintain/triage are already
-            # mapped to their base level.
-            perm="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$user/permission" --jq '.permission' 2>/dev/null || true)"
-            if [[ "$perm" != "admin" && "$perm" != "write" ]]; then
-              skip "$user cannot trigger a backport (permission: ${perm:-none}); write access or higher is required."
-            fi
           }
 
           pr_state="$(gh pr view "$PR_NUMBER" --json state --jq '.state')"
@@ -102,7 +106,11 @@ jobs:
             skip "PR #$PR_NUMBER is not merged; backporting requires a merged pull request."
           fi
 
-          check_write_access "$COMMENTER"
+          # Refuse to backport a PR rewritten after the comment.
+          updated_at="$(gh pr view "$PR_NUMBER" --json updatedAt --jq '.updatedAt')"
+          if [[ "$(date -d "$updated_at" +%s)" -gt "$(date -d "$COMMENT_AT" +%s)" ]]; then
+            skip "PR #$PR_NUMBER was changed after the backport comment; refusing to backport a moving target."
+          fi
 
           # Parse '/backport <branch> <branch> ...', accepting spaces and/or
           # commas as separators. At least one branch is required.
@@ -122,26 +130,111 @@ jobs:
             "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" \
             -f content='rocket' >/dev/null
 
-          target_branches="${targets[*]}"
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "target_branches=$target_branches" >> "$GITHUB_OUTPUT"
-          echo "PR: #$PR_NUMBER | targets: $target_branches"
+          # Emit the targets as a JSON array for the matrix and the source PR
+          # title (an existing conventional-commit message) for the new commits.
+          target_list="$(printf '%s\n' "${targets[@]}" | jq -R . | jq -sc .)"
+          pr_title="$(gh pr view "$PR_NUMBER" --json title --jq '.title')"
+          echo "target_list=$target_list" >> "$GITHUB_OUTPUT"
+          echo "pr_title=$pr_title" >> "$GITHUB_OUTPUT"
+          echo "PR: #$PR_NUMBER | title: $pr_title | targets: ${targets[*]}"
 
-      - name: Create backport pull requests
-        id: backport
-        if: steps.targets.outputs.target_branches != ''
-        uses: korthout/backport-action@2e830a1d0b8269505846ddd407a70876913ad1f8 # v4.6.0
+  backport:
+    name: Backport to ${{ matrix.target }}
+    needs: determine-targets
+    if: needs.determine-targets.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.determine-targets.outputs.target_list) }}
+    steps:
+      - name: Generate GitHub App token
+        if: github.repository_owner == 'neteye-platform'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: generate-token
         with:
-          github_token: ${{ steps.generate-token.outputs.token || github.token }}
-          source_pr_number: ${{ steps.targets.outputs.pr_number }}
-          target_branches: ${{ steps.targets.outputs.target_branches }}
-          # Branch targeting is computed above, so the action must not interpret
-          # labels on its own.
-          label_pattern: ""
-          comment_style: summary
-          # Create a draft pull request when a cherry-pick conflicts instead of
-          # failing the run.
-          experimental: |
-            {
-              "conflict_resolution": "draft_commit_conflicts"
-            }
+          app-id: ${{ vars.NETEYE_APP_ID }}
+          private-key: ${{ secrets.NETEYE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Apply source pull request changes
+        id: apply
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+          TARGET_BRANCH: ${{ matrix.target }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+        run: |
+          set -euo pipefail
+
+          # Fetch the target branch and the merged commit of the source PR.
+          merge_sha="$(gh pr view "$PR_NUMBER" --json mergeCommit --jq '.mergeCommit.oid')"
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          git fetch --no-tags origin "$merge_sha"
+
+          # Work on the target branch (origin ref exists) and leave the changes
+          # uncommitted: create-pull-request stages and commits them, creating
+          # the PR branch itself.
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+
+          # Apply the whole PR as a single set of uncommitted changes (one new
+          # commit is created later with the source title).
+          # A merged PR has either a merge commit (pick the first parent with
+          # -m 1) or a single squashed/rebased commit (plain cherry-pick).
+          cherry_pick_args=(-n --no-ff)
+          if [ "$(git show -s --format='%P' "$merge_sha" | wc -w)" -gt 1 ]; then
+            cherry_pick_args+=(-m 1)
+          fi
+
+          # cherry-pick -n exits non-zero on conflict. Keep the conflict markers
+          # staged (git add -A) so create-pull-request can commit them and open
+          # a draft PR for a human to resolve.
+          draft="false"
+          if ! git cherry-pick "${cherry_pick_args[@]}" "$merge_sha"; then
+            git add -A
+            draft="true"
+          fi
+
+          echo "draft=$draft" >> "$GITHUB_OUTPUT"
+
+      - name: Create backport pull request
+        id: backport
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ steps.generate-token.outputs.token || github.token }}
+          sign-commits: true
+          commit-message: ${{ needs.determine-targets.outputs.pr_title }}
+          branch: backport-${{ github.event.issue.number }}-to-${{ matrix.target }}
+          base: ${{ matrix.target }}
+          title: ${{ needs.determine-targets.outputs.pr_title }}
+          body: |
+            Backport of #${{ github.event.issue.number }} to `${{ matrix.target }}`.
+          draft: ${{ steps.apply.outputs.draft }}
+          delete-branch: true
+
+      - name: Comment on the source pull request
+        if: >-
+          steps.backport.outputs.pull-request-operation == 'created' ||
+          steps.backport.outputs.pull-request-operation == 'updated'
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+          DRAFT: ${{ steps.apply.outputs.draft }}
+          TARGET_BRANCH: ${{ matrix.target }}
+          PR_URL: ${{ steps.backport.outputs.pull-request-url }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+        run: |
+          if [[ "$DRAFT" == "true" ]]; then
+            body=":rocket: Backport to \`$TARGET_BRANCH\` is ready as a draft pull request, **but has conflicts to resolve**: $PR_URL"
+          else
+            body=":rocket: Backported to \`$TARGET_BRANCH\` in $PR_URL"
+          fi
+          gh pr comment "$PR_NUMBER" --body "$body"
