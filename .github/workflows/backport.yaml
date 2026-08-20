@@ -1,0 +1,189 @@
+# Reusable workflow: backport merged pull requests to maintenance branches. No inputs.
+#
+# Trigger it from a topic workflow of the consuming repository:
+#
+#   name: Backport
+#   on:
+#     pull_request_target:
+#       types: [closed, labeled]
+#     issue_comment:
+#       types: [created]
+#   permissions: write-all
+#   jobs:
+#     backport:
+#       if: >
+#         (github.event_name == 'pull_request_target' &&
+#           github.event.pull_request.merged &&
+#           contains(github.event.pull_request.labels.*.name, 'backport')) ||
+#         (github.event_name == 'issue_comment' &&
+#           github.event.issue.pull_request &&
+#           startsWith(github.event.comment.body, '/backport'))
+#       uses: neteye-platform/repo-commons/.github/workflows/backport.yaml@main
+#       secrets: inherit
+#
+# Behaviour:
+#   - A `backport` label on a merged pull request backports to the highest
+#     maint-X.XX branch, or to the previous one when merged into a maint branch.
+#   - A `/backport <branch...>` comment backports to the given branches and
+#     falls back to the automatic rule when no branch is given.
+#   - Comment backports and `backport` labels added after the merge require
+#     write access (or higher); otherwise the run is skipped with a warning.
+#   - When a cherry-pick conflicts, a draft pull request is created instead of
+#     failing the run.
+#
+# Secrets: the workflow uses the NETEYE_APP_ID variable and the
+#   NETEYE_APP_PRIVATE_KEY secret of the neteye steward GitHub App, and falls
+#   back to GITHUB_TOKEN in forks (see the Generate GitHub App token step).
+
+name: Backport
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  backport:
+    name: Backport merged pull request
+    if: >
+      (github.event_name == 'pull_request_target' &&
+        github.event.pull_request.merged &&
+        contains(github.event.pull_request.labels.*.name, 'backport')) ||
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        startsWith(github.event.comment.body, '/backport'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        if: github.repository_owner == 'neteye-platform'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: generate-token
+        with:
+          app-id: ${{ vars.NETEYE_APP_ID }}
+          private-key: ${{ secrets.NETEYE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Determine backport target branches
+        id: targets
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          # Source pull request number (present for both the closed-PR event and
+          # the issue_comment event on a pull request).
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          # Branch the pull request targets; only populated for the PR event.
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+          # Actor that triggered the event (label author on `labeled`, merger on `closed`).
+          ACTOR: ${{ github.event.sender.login }}
+          # Webhook action for the pull_request_target event (closed | labeled).
+          ACTION: ${{ github.event.action }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+        run: |
+          set -euo pipefail
+
+          skip() {
+            echo "::warning::$1"
+            echo "target_branches=" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          # Existing maint-* branches, sorted by version (ascending).
+          mapfile -t maints < <(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/maint-*' | sed 's|^origin/||' | sort -V)
+
+          # Automatic target: highest maint when merged into a non-maint branch,
+          # otherwise the immediately previous (older) maint branch.
+          auto_target() {
+            local base="$1" branch previous=""
+            if [[ "$base" == maint-* ]]; then
+              for branch in "${maints[@]}"; do
+                [[ "$branch" == "$base" ]] && break
+                previous="$branch"
+              done
+              printf '%s' "$previous"
+            else
+              if [[ ${#maints[@]} -gt 0 ]]; then
+                printf '%s' "${maints[-1]}"
+              fi
+            fi
+          }
+
+          check_write_access() {
+            local user="$1" perm
+            # The endpoint returns the legacy base level (admin | write | read |
+            # none), where granular roles such as maintain/triage are already
+            # mapped to their base level.
+            perm="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$user/permission" --jq '.permission' 2>/dev/null || true)"
+            if [[ "$perm" != "admin" && "$perm" != "write" ]]; then
+              skip "$user cannot trigger a backport (permission: ${perm:-none}); write access or higher is required."
+            fi
+          }
+
+          base_branch="$BASE_BRANCH"
+
+          if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+            pr_json="$(gh pr view "$PR_NUMBER" --json merged,baseRefName --jq '.merged|tostring + "|" + .baseRefName')"
+            merged="${pr_json%%|*}"
+            base_branch="${pr_json##*|}"
+
+            if [[ "$merged" != "true" ]]; then
+              skip "PR #$PR_NUMBER is not merged; backport via comment requires a merged pull request."
+            fi
+
+            check_write_access "$COMMENTER"
+
+            # Parse the branches from the '/backport <branch> <branch> ...' comment.
+            # If no branch is given, fall back to the automatic target.
+            args="$(printf '%s' "$COMMENT_BODY" | head -n1 | sed 's|^/backport[[:space:]]*||' | xargs)"
+            if [[ -n "$args" ]]; then
+              read -r -a targets <<< "$args"
+            else
+              targets=()
+              auto="$(auto_target "$base_branch")"
+              [[ -n "$auto" ]] && targets+=("$auto")
+            fi
+          else
+            # pull_request_target: merged with the `backport` label. When the
+            # label was added after the merge (action `labeled`), require write
+            # access of the label author; the merge itself already proves write
+            # access on `closed`.
+            if [[ "$ACTION" == "labeled" ]]; then
+              check_write_access "$ACTOR"
+            fi
+            targets=()
+            auto="$(auto_target "$base_branch")"
+            [[ -n "$auto" ]] && targets+=("$auto")
+          fi
+
+          target_branches="${targets[*]:-}"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "target_branches=$target_branches" >> "$GITHUB_OUTPUT"
+          echo "Event: $EVENT_NAME | PR: #$PR_NUMBER | base: $base_branch | targets: ${target_branches:-<none>}"
+
+      - name: Create backport pull requests
+        id: backport
+        if: steps.targets.outputs.target_branches != ''
+        uses: korthout/backport-action@2e830a1d0b8269505846ddd407a70876913ad1f8 # v4.6.0
+        with:
+          github_token: ${{ steps.generate-token.outputs.token || github.token }}
+          source_pr_number: ${{ steps.targets.outputs.pr_number }}
+          target_branches: ${{ steps.targets.outputs.target_branches }}
+          # Branch targeting is computed above, so the action must not interpret
+          # labels on its own.
+          label_pattern: ""
+          comment_style: summary
+          # Create a draft pull request when a cherry-pick conflicts instead of
+          # failing the run.
+          experimental: |
+            {
+              "conflict_resolution": "draft_commit_conflicts"
+            }
