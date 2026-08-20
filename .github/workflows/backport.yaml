@@ -1,33 +1,32 @@
-# Reusable workflow: backport merged pull requests to maintenance branches. No inputs.
+# Reusable workflow: backport a merged pull request to maintenance branches.
+# No inputs.
 #
 # Trigger it from a topic workflow of the consuming repository:
 #
 #   name: Backport
 #   on:
-#     pull_request_target:
-#       types: [closed, labeled]
 #     issue_comment:
 #       types: [created]
 #   permissions: write-all
 #   jobs:
 #     backport:
-#       if: >
-#         (github.event_name == 'pull_request_target' &&
-#           github.event.pull_request.merged &&
-#           contains(github.event.pull_request.labels.*.name, 'backport')) ||
-#         (github.event_name == 'issue_comment' &&
-#           github.event.issue.pull_request &&
-#           startsWith(github.event.comment.body, '/backport'))
 #       uses: neteye-platform/repo-commons/.github/workflows/backport.yaml@main
 #       secrets: inherit
 #
+# The workflow itself filters the relevant events, so no `if` condition is
+# required on the calling job.
+#
+# Usage:
+#   Comment `/backport <branch[,]...>` on a merged pull request, naming one or
+#   more target branches separated by spaces and/or commas, for example:
+#     /backport maint-3.8 maint-3.7
+#   The branches are backported from the merged pull request.
+#
 # Behaviour:
-#   - A `backport` label on a merged pull request backports to the highest
-#     maint-X.XX branch, or to the previous one when merged into a maint branch.
-#   - A `/backport <branch...>` comment backports to the given branches and
-#     falls back to the automatic rule when no branch is given.
-#   - Comment backports and `backport` labels added after the merge require
-#     write access (or higher); otherwise the run is skipped with a warning.
+#   - The pull request must be merged; otherwise the run is skipped with a
+#     warning.
+#   - The comment author needs write access (or higher); otherwise the run is
+#     skipped with a warning.
 #   - When a cherry-pick conflicts, a draft pull request is created instead of
 #     failing the run.
 #
@@ -48,12 +47,9 @@ jobs:
   backport:
     name: Backport merged pull request
     if: >
-      (github.event_name == 'pull_request_target' &&
-        github.event.pull_request.merged &&
-        contains(github.event.pull_request.labels.*.name, 'backport')) ||
-      (github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request &&
-        startsWith(github.event.comment.body, '/backport'))
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/backport')
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App token
@@ -75,18 +71,11 @@ jobs:
         id: targets
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          # Source pull request number (present for both the closed-PR event and
-          # the issue_comment event on a pull request).
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-          # Branch the pull request targets; only populated for the PR event.
-          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          # Source pull request number, present for an issue_comment on a PR.
+          PR_NUMBER: ${{ github.event.issue.number }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENTER: ${{ github.event.comment.user.login }}
-          # Actor that triggered the event (label author on `labeled`, merger on `closed`).
-          ACTOR: ${{ github.event.sender.login }}
-          # Webhook action for the pull_request_target event (closed | labeled).
-          ACTION: ${{ github.event.action }}
+          COMMENT_ID: ${{ github.event.comment.id }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
         run: |
           set -euo pipefail
@@ -95,26 +84,6 @@ jobs:
             echo "::warning::$1"
             echo "target_branches=" >> "$GITHUB_OUTPUT"
             exit 0
-          }
-
-          # Existing maint-* branches, sorted by version (ascending).
-          mapfile -t maints < <(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/maint-*' | sed 's|^origin/||' | sort -V)
-
-          # Automatic target: highest maint when merged into a non-maint branch,
-          # otherwise the immediately previous (older) maint branch.
-          auto_target() {
-            local base="$1" branch previous=""
-            if [[ "$base" == maint-* ]]; then
-              for branch in "${maints[@]}"; do
-                [[ "$branch" == "$base" ]] && break
-                previous="$branch"
-              done
-              printf '%s' "$previous"
-            else
-              if [[ ${#maints[@]} -gt 0 ]]; then
-                printf '%s' "${maints[-1]}"
-              fi
-            fi
           }
 
           check_write_access() {
@@ -128,46 +97,35 @@ jobs:
             fi
           }
 
-          base_branch="$BASE_BRANCH"
-
-          if [[ "$EVENT_NAME" == "issue_comment" ]]; then
-            pr_json="$(gh pr view "$PR_NUMBER" --json merged,baseRefName --jq '.merged|tostring + "|" + .baseRefName')"
-            merged="${pr_json%%|*}"
-            base_branch="${pr_json##*|}"
-
-            if [[ "$merged" != "true" ]]; then
-              skip "PR #$PR_NUMBER is not merged; backport via comment requires a merged pull request."
-            fi
-
-            check_write_access "$COMMENTER"
-
-            # Parse the branches from the '/backport <branch> <branch> ...' comment.
-            # If no branch is given, fall back to the automatic target.
-            args="$(printf '%s' "$COMMENT_BODY" | head -n1 | sed 's|^/backport[[:space:]]*||' | xargs)"
-            if [[ -n "$args" ]]; then
-              read -r -a targets <<< "$args"
-            else
-              targets=()
-              auto="$(auto_target "$base_branch")"
-              [[ -n "$auto" ]] && targets+=("$auto")
-            fi
-          else
-            # pull_request_target: merged with the `backport` label. When the
-            # label was added after the merge (action `labeled`), require write
-            # access of the label author; the merge itself already proves write
-            # access on `closed`.
-            if [[ "$ACTION" == "labeled" ]]; then
-              check_write_access "$ACTOR"
-            fi
-            targets=()
-            auto="$(auto_target "$base_branch")"
-            [[ -n "$auto" ]] && targets+=("$auto")
+          pr_state="$(gh pr view "$PR_NUMBER" --json state --jq '.state')"
+          if [[ "$pr_state" != "MERGED" ]]; then
+            skip "PR #$PR_NUMBER is not merged; backporting requires a merged pull request."
           fi
 
-          target_branches="${targets[*]:-}"
+          check_write_access "$COMMENTER"
+
+          # Parse '/backport <branch> <branch> ...', accepting spaces and/or
+          # commas as separators. At least one branch is required.
+          args="$(printf '%s' "$COMMENT_BODY" | head -n1 | sed 's|^/backport[[:space:]]*||' | sed 's|,| |g' | xargs)"
+          read -r -a targets <<< "$args"
+          if [[ ${#targets[@]} -eq 0 ]]; then
+            skip "no target branch given; usage: /backport <branch>[, <branch> ...]"
+          fi
+
+          # Sort targets in reverse alphabetical order so the backport PRs are
+          # created in a predictable order regardless of how they were written.
+          mapfile -t targets < <(printf '%s\n' "${targets[@]}" | sort -r)
+
+          # Add a reaction to the comment to indicate that the backport is being processed.
+          gh api --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" \
+            -f content='rocket' >/dev/null
+
+          target_branches="${targets[*]}"
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "target_branches=$target_branches" >> "$GITHUB_OUTPUT"
-          echo "Event: $EVENT_NAME | PR: #$PR_NUMBER | base: $base_branch | targets: ${target_branches:-<none>}"
+          echo "PR: #$PR_NUMBER | targets: $target_branches"
 
       - name: Create backport pull requests
         id: backport
