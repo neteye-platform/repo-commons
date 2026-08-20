@@ -1,3 +1,27 @@
+# Reusable workflow: build (and optionally publish) a Docker image to GHCR.
+#
+# Trigger it from a topic workflow of the consuming repository, e.g.:
+#
+#   name: Build Image
+#   on:
+#     push:
+#       tags: ["v*"]
+#   jobs:
+#     build:
+#       uses: neteye-platform/repo-commons/.github/workflows/build-docker-image.yaml@main
+#       with:
+#         working-directory: .
+#         dockerfile-path: ./Dockerfile
+#         image-name: my-image
+#         push: true
+#
+# Inputs (all required):
+#   working-directory: working directory to run the workflow in.
+#   dockerfile-path:   path to the Dockerfile to build.
+#   image-name:        image name, published to ghcr.io/<owner>/<name>.
+#   push:              whether to push the built image to the registry. When
+#                      false, the image is uploaded as an artifact instead.
+
 name: Build Docker Image
 
 on:

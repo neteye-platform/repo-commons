@@ -1,3 +1,15 @@
+# Reusable workflow: run pre-commit checks using the consuming repository's own
+# pre-commit configuration (prek in workspace mode). No inputs.
+#
+# Trigger it from a topic workflow, e.g.:
+#
+#   name: Pre-commit Checks
+#   on:
+#     pull_request:
+#   jobs:
+#     precommit:
+#       uses: neteye-platform/repo-commons/.github/workflows/pre-commit-checks.yaml@main
+
 # NOTE: This workflow runs pre-commit checks with prek in workspace mode.
 # When prek will introduce a way to import pre-commit configurations from other repositories (https://github.com/j178/prek/issues/1238)
 # we can centralize all pre-commit checks in the repo-commons repository and reference the configuration file from there.

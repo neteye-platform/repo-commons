@@ -1,3 +1,22 @@
+# Reusable workflow: run a CodeQL static security analysis and upload the SARIF
+# report to the GitHub Advanced Security dashboard. No inputs.
+#
+# Trigger it from a topic workflow, e.g.:
+#
+#   name: CodeQL
+#   on:
+#     pull_request:
+#     push:
+#       branches: [main]
+#     schedule:
+#       - cron: "0 0 * * *"
+#   jobs:
+#     codeql:
+#       uses: neteye-platform/repo-commons/.github/workflows/codeql-scan.yaml@main
+#
+# Requires the GitHub Advanced Security feature; results appear in the
+# repository Security tab.
+
 name: CodeQL Scan
 
 on:
