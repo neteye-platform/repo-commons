@@ -43,13 +43,15 @@
 #   the pull request hasn't changed since the comment.
 #
 # Secrets: the workflow uses the NETEYE_APP_ID variable and the
-#   NETEYE_APP_PRIVATE_KEY secret of the neteye steward GitHub App, and falls
-#   back to GITHUB_TOKEN in forks (see the Generate GitHub App token step).
+#   NETEYE_APP_PRIVATE_KEY secret of the neteye steward GitHub App.
 
 name: Backport
 
 on:
   workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   determine-targets:
@@ -60,21 +62,17 @@ jobs:
       startsWith(github.event.comment.body, '/backport') &&
       contains(fromJSON('["COLLABORATOR","MEMBER","OWNER"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
     outputs:
       target_list: ${{ steps.targets.outputs.target_list }}
       pr_title: ${{ steps.targets.outputs.pr_title }}
     steps:
       - name: Generate GitHub App token
-        if: github.repository_owner == 'neteye-platform'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: generate-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ vars.NETEYE_APP_ID }}
           private-key: ${{ secrets.NETEYE_APP_PRIVATE_KEY }}
-          permission-contents: write
+          permission-contents: read
           permission-pull-requests: write
 
       - name: Checkout repository
@@ -91,7 +89,7 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ID: ${{ github.event.comment.id }}
           COMMENT_AT: ${{ github.event.comment.created_at }}
-          GH_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -143,23 +141,20 @@ jobs:
     needs: determine-targets
     if: needs.determine-targets.result == 'success'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.determine-targets.outputs.target_list) }}
     steps:
       - name: Generate GitHub App token
-        if: github.repository_owner == 'neteye-platform'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: generate-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ vars.NETEYE_APP_ID }}
           private-key: ${{ secrets.NETEYE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
+          permission-workflows: write
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -172,7 +167,7 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.issue.number }}
           TARGET_BRANCH: ${{ matrix.target }}
-          GH_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -210,7 +205,7 @@ jobs:
         id: backport
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          token: ${{ steps.generate-token.outputs.token || github.token }}
+          token: ${{ steps.generate-token.outputs.token }}
           sign-commits: true
           commit-message: ${{ needs.determine-targets.outputs.pr_title }}
           branch: backport-${{ github.event.issue.number }}-to-${{ matrix.target }}
@@ -230,7 +225,7 @@ jobs:
           DRAFT: ${{ steps.apply.outputs.draft }}
           TARGET_BRANCH: ${{ matrix.target }}
           PR_URL: ${{ steps.backport.outputs.pull-request-url }}
-          GH_TOKEN: ${{ steps.generate-token.outputs.token || github.token }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
           if [[ "$DRAFT" == "true" ]]; then
             body=":rocket: Backport to \`$TARGET_BRANCH\` is ready as a draft pull request, **but has conflicts to resolve**: $PR_URL"
