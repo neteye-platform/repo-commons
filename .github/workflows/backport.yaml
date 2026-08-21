@@ -132,8 +132,15 @@ jobs:
           # title (an existing conventional-commit message) for the new commits.
           target_list="$(printf '%s\n' "${targets[@]}" | jq -R . | jq -sc .)"
           pr_title="$(gh pr view "$PR_NUMBER" --json title --jq '.title')"
-          echo "target_list=$target_list" >> "$GITHUB_OUTPUT"
-          echo "pr_title=$pr_title" >> "$GITHUB_OUTPUT"
+          delimiter="$(openssl rand -hex 16)"
+          {
+            echo "target_list<<${delimiter}"
+            echo "$target_list"
+            echo "${delimiter}"
+            echo "pr_title<<${delimiter}"
+            echo "$pr_title"
+            echo "${delimiter}"
+          } >> "$GITHUB_OUTPUT"
           echo "PR: #$PR_NUMBER | title: $pr_title | targets: ${targets[*]}"
 
   backport:
