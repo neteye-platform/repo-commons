@@ -23,12 +23,18 @@
 #   The branches are backported from the merged pull request.
 #
 # Behaviour:
-#   - The pull request must be merged; otherwise the run is skipped with a
-#     warning.
-#   - The comment author needs write access (or higher); otherwise the
-#     authorize-requester job skips the whole run.
-#   - The source pull request must not have changed after the backport comment,
-#     or the run is skipped with a warning.
+#   - On any `/backport` command an explanatory comment is posted on the source
+#     pull request when the command cannot be honoured, and the workflow
+#     normally completes successfully on these conditions:
+#       * the comment author lacks write access,
+#       * the pull request is not merged,
+#       * the pull request changed after the backport command,
+#       * no target branch is given,
+#       * none of the requested target branches exist (they are validated
+#         upfront; unknown branches are dropped with a comment, so a typo in one
+#         target does not block the others).
+#   - If the notification comment itself cannot be posted, the run fails on
+#     purpose: a rejection is expected, but failing to notify is a real problem.
 #   - For each target branch the changes of the source pull request are applied
 #     as a single new commit, signed by the GitHub App via the git database
 #     API, and a backport pull request is created.
@@ -37,6 +43,8 @@
 #   - When applying the changes conflicts, a draft pull request is created so a
 #     human can resolve it, and a comment is posted on the source pull request
 #     with a link to the backport.
+#   - If no new pull request is needed, a comment links the existing current
+#     backport pull request when available, or says that none is needed.
 #
 # Security: never checks out or executes the source pull request head; it only
 #   applies its merge commit via git operations. Requires write access and that
@@ -56,12 +64,16 @@ permissions:
 jobs:
   determine-targets:
     name: Determine backport targets
+    # Runs for any `/backport` command on a pull request, regardless of the
+    # comment author's access level, so that a clear comment is posted even for
+    # unauthorized users instead of failing silently.
     if: >
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/backport') &&
-      contains(fromJSON('["COLLABORATOR","MEMBER","OWNER"]'), github.event.comment.author_association)
+      startsWith(github.event.comment.body, '/backport')
     runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
     outputs:
       target_list: ${{ steps.targets.outputs.target_list }}
       pr_title: ${{ steps.targets.outputs.pr_title }}
@@ -75,11 +87,6 @@ jobs:
           permission-contents: read
           permission-pull-requests: write
 
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
       - name: Determine backport target branches
         id: targets
         shell: bash
@@ -89,25 +96,41 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ID: ${{ github.event.comment.id }}
           COMMENT_AT: ${{ github.event.comment.created_at }}
+          COMMENT_AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
           set -euo pipefail
 
-          skip() {
-            echo "::warning::$1"
+          # Stop without backporting. A rejection is an expected outcome, so it
+          # normally succeeds; the empty target list is emitted first so the
+          # backport job is skipped. Posting the comment is intentionally NOT
+          # best-effort: if the notification cannot be delivered that is a real
+          # problem and must surface as a failed run, not be hidden.
+          fail() {
+            local reason="$1"
+            echo "::warning::$reason"
             echo "target_list=[]" >> "$GITHUB_OUTPUT"
+            gh pr comment "$PR_NUMBER" --body ":no_entry_sign: Backport not performed — $reason"
             exit 0
           }
 
+          # Require write access (Collaborator or higher) to trigger a backport.
+          case "$COMMENT_AUTHOR_ASSOCIATION" in
+            COLLABORATOR|MEMBER|OWNER) ;;
+            *)
+              fail "you need **write access** (Collaborator or higher) to trigger a backport."
+              ;;
+          esac
+
           pr_state="$(gh pr view "$PR_NUMBER" --json state --jq '.state')"
           if [[ "$pr_state" != "MERGED" ]]; then
-            skip "PR #$PR_NUMBER is not merged; backporting requires a merged pull request."
+            fail "PR #$PR_NUMBER is not merged; backporting requires a merged pull request."
           fi
 
-          # Refuse to backport a PR rewritten after the comment.
+          # Refuse to backport a PR rewritten after the command.
           updated_at="$(gh pr view "$PR_NUMBER" --json updatedAt --jq '.updatedAt')"
           if [[ "$(date -d "$updated_at" +%s)" -gt "$(date -d "$COMMENT_AT" +%s)" ]]; then
-            skip "PR #$PR_NUMBER was changed after the backport comment; refusing to backport a moving target."
+            fail "PR #$PR_NUMBER was changed after the backport command; refusing to backport a moving target."
           fi
 
           # Parse '/backport <branch> <branch> ...', accepting spaces and/or
@@ -115,17 +138,47 @@ jobs:
           args="$(printf '%s' "$COMMENT_BODY" | head -n1 | sed 's|^/backport[[:space:]]*||' | sed 's|,| |g' | xargs)"
           read -r -a targets <<< "$args"
           if [[ ${#targets[@]} -eq 0 ]]; then
-            skip "no target branch given; usage: /backport <branch>[, <branch> ...]"
+            fail "no target branch given; usage: /backport <branch>[, <branch> ...]"
           fi
 
           # Sort targets in reverse alphabetical order so the backport PRs are
           # created in a predictable order regardless of how they were written.
           mapfile -t targets < <(printf '%s\n' "${targets[@]}" | sort -r)
 
+          # Keep only branches that exist on the remote. Unknown targets are
+          # dropped with a warning (and a comment) instead of failing later.
+          missing=()
+          existing=()
+          for t in "${targets[@]}"; do
+            encoded_branch="$(jq -rn --arg branch "$t" '$branch | @uri')"
+            if api_response="$(gh api --include "repos/$GH_REPO/branches/$encoded_branch" 2>&1)"; then
+              existing+=("$t")
+            else
+              api_status=$?
+              http_status="$(printf '%s\n' "$api_response" | awk '/^HTTP\/[0-9.]+ [0-9]+/{status=$2} END{print status}')"
+              if [[ "$http_status" == "404" ]]; then
+                missing+=("$t")
+              else
+                printf '%s\n' "$api_response" >&2
+                exit "$api_status"
+              fi
+            fi
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::warning::Ignoring unknown target branch(es): ${missing[*]}"
+            gh pr comment "$PR_NUMBER" \
+              --body ":warning: Ignoring unknown target branch(es): \`${missing[*]}\`" \
+              >/dev/null
+          fi
+          targets=("${existing[@]}")
+          if [[ ${#targets[@]} -eq 0 ]]; then
+            fail "none of the requested target branches exist: ${missing[*]}"
+          fi
+
           # Add a reaction to the comment to indicate that the backport is being processed.
           gh api --method POST \
             -H "Accept: application/vnd.github+json" \
-            "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" \
+            "/repos/$GH_REPO/issues/comments/$COMMENT_ID/reactions" \
             -f content='rocket' >/dev/null
 
           # Emit the targets as a JSON array for the matrix and the source PR
@@ -134,20 +187,26 @@ jobs:
           pr_title="$(gh pr view "$PR_NUMBER" --json title --jq '.title')"
           delimiter="$(openssl rand -hex 16)"
           {
-            echo "target_list<<${delimiter}"
-            echo "$target_list"
-            echo "${delimiter}"
-            echo "pr_title<<${delimiter}"
-            echo "$pr_title"
-            echo "${delimiter}"
+            echo "target_list<<$delimiter"
+            printf '%s\n' "$target_list"
+            echo "$delimiter"
+            echo "pr_title<<$delimiter"
+            printf '%s\n' "$pr_title"
+            echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
           echo "PR: #$PR_NUMBER | title: $pr_title | targets: ${targets[*]}"
 
   backport:
     name: Backport to ${{ matrix.target }}
     needs: determine-targets
-    if: needs.determine-targets.result == 'success'
+    # Explicitly skip when there are no targets: an empty matrix would otherwise
+    # fail the job ("Matrix vector 'target' does not contain any values").
+    if: >-
+      needs.determine-targets.result == 'success' &&
+      needs.determine-targets.outputs.target_list != '[]'
     runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
     strategy:
       fail-fast: false
       matrix:
@@ -224,19 +283,37 @@ jobs:
           delete-branch: true
 
       - name: Comment on the source pull request
-        if: >-
-          steps.backport.outputs.pull-request-operation == 'created' ||
-          steps.backport.outputs.pull-request-operation == 'updated'
         env:
           PR_NUMBER: ${{ github.event.issue.number }}
           DRAFT: ${{ steps.apply.outputs.draft }}
           TARGET_BRANCH: ${{ matrix.target }}
+          OPERATION: ${{ steps.backport.outputs.pull-request-operation }}
           PR_URL: ${{ steps.backport.outputs.pull-request-url }}
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
-          if [[ "$DRAFT" == "true" ]]; then
-            body=":rocket: Backport to \`$TARGET_BRANCH\` is ready as a draft pull request, **but has conflicts to resolve**: $PR_URL"
-          else
-            body=":rocket: Backported to \`$TARGET_BRANCH\` in $PR_URL"
-          fi
+          case "$OPERATION" in
+            created|updated)
+              if [[ "$DRAFT" == "true" ]]; then
+                body=":rocket: Backport to \`$TARGET_BRANCH\` is ready as a draft pull request, **but has conflicts to resolve**: $PR_URL"
+              else
+                body=":rocket: Backported to \`$TARGET_BRANCH\` in $PR_URL"
+              fi
+              ;;
+            closed)
+              body=":white_check_mark: Backport to \`$TARGET_BRANCH\` had no changes; the existing backport pull request was closed."
+              ;;
+            none)
+              if [[ -n "$PR_URL" ]]; then
+                body=":white_check_mark: Backport to \`$TARGET_BRANCH\` is already current: $PR_URL"
+              else
+                body=":white_check_mark: Nothing to backport to \`$TARGET_BRANCH\`: no new pull request is needed."
+              fi
+              ;;
+            "")
+              body=":warning: Backport to \`$TARGET_BRANCH\` produced no operation result; please check the backport run logs."
+              ;;
+            *)
+              body=":warning: Backport to \`$TARGET_BRANCH\` produced an unexpected result (\`$OPERATION\`); please check the backport run logs."
+              ;;
+          esac
           gh pr comment "$PR_NUMBER" --body "$body"
