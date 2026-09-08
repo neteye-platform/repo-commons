@@ -1,5 +1,5 @@
-# Reusable workflow: run a CodeQL static security analysis and upload the SARIF
-# report to the GitHub Advanced Security dashboard. No inputs.
+# Reusable workflow: detect CodeQL-supported languages and run static
+# security analysis in parallel.
 #
 # Trigger it from a topic workflow, e.g.:
 #
@@ -13,9 +13,6 @@
 #   jobs:
 #     codeql:
 #       uses: neteye-platform/repo-commons/.github/workflows/codeql-scan.yaml@main
-#
-# Requires the GitHub Advanced Security feature; results appear in the
-# repository Security tab.
 
 name: CodeQL Scan
 
@@ -28,9 +25,28 @@ permissions:
   security-events: write
 
 jobs:
-  codeql-scan:
-    name: CodeQL Scan
+  detect-codeql-languages:
+    name: Detect CodeQL Languages
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Detect supported languages
+        id: set-matrix
+        uses: advanced-security/set-codeql-language-matrix@038e12c9474b0c253f122180eb943bee2e10a24a # v1.6.0
+        with:
+          access-token: ${{ github.token }}
+          endpoint: ${{ github.event.repository.languages_url }}
+          standard-language-names: "true"
+
+  codeql-scan:
+    name: CodeQL Scan (${{ matrix.language }})
+    needs: detect-codeql-languages
+    if: fromJSON(needs.detect-codeql-languages.outputs.matrix).include[0] != null
+    runs-on: ${{ matrix.language == 'swift' && 'macos-latest' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect-codeql-languages.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,8 +54,35 @@ jobs:
       - name: CodeQL Init
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode == 'manual' && 'autobuild' || matrix.build-mode }}
           queries: "security-and-quality"
 
       - name: CodeQL Analyze
+        id: analyze
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          category: "/language:${{ matrix.language }}"
+          upload: never
+
+      - name: Upload CodeQL SARIF file for GitHub Advanced Security Dashboard
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          category: "/language:${{ matrix.language }}"
+          sarif_file: ${{ steps.analyze.outputs.sarif-output }}
         continue-on-error: true
+
+  codeql-scan-status:
+    name: CodeQL Scan
+    needs: [detect-codeql-languages, codeql-scan]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CodeQL job results
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          if [ "$FAILED" = "true" ]; then
+            echo "::error::A CodeQL job failed or was cancelled"
+            exit 1
+          fi
