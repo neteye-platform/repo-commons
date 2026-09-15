@@ -1,5 +1,7 @@
-# Reusable workflow: detect CodeQL-supported languages and run static
-# security analysis in parallel.
+# Reusable workflow: detect CodeQL-supported languages and run static security
+# analysis in parallel, uploading the SARIF reports to the GitHub Advanced
+# Security dashboard and the text logs as artifacts. The scan fails if CodeQL
+# reports any alert, regardless of its severity. No inputs.
 #
 # Trigger it from a topic workflow, e.g.:
 #
@@ -71,6 +73,54 @@ jobs:
           category: "/language:${{ matrix.language }}"
           sarif_file: ${{ steps.analyze.outputs.sarif-output }}
         continue-on-error: true
+
+      - name: Generate CodeQL txt report
+        shell: bash
+        env:
+          SARIF_DIR: ${{ steps.analyze.outputs.sarif-output }}
+        run: |
+          set -euo pipefail
+
+          jq -r '
+              .runs[] as $run
+              | ($run.tool.driver.rules // []) as $rules
+              | $run.results // []
+              | .[]
+              | [
+                  (.rule.index // .ruleIndex) as $i
+                  | if $i == null then (.ruleId // "unknown")
+                    else ($rules[$i].id // .ruleId // "unknown") end,
+                  (.locations[0].physicalLocation.artifactLocation.uri // "unknown"),
+                  (.locations[0].physicalLocation.region.startLine // 0 | tostring),
+                  (.message.text // "" | gsub("\n"; " "))
+              ]
+              | join(" | ")
+          ' "$SARIF_DIR"/*.sarif >"codeql_${{ matrix.language }}.txt"
+
+          cat "codeql_${{ matrix.language }}.txt"
+
+      - name: Upload CodeQL txt file as artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codeql-scan-${{ matrix.language }}
+          path: codeql_${{ matrix.language }}.txt
+          retention-days: 7
+
+      - name: Fail on CodeQL alerts
+        shell: bash
+        env:
+          SARIF_DIR: ${{ steps.analyze.outputs.sarif-output }}
+        run: |
+          set -euo pipefail
+
+          ALERTS="$(jq -s '[.[].runs[].results // [] | .[]] | length' "$SARIF_DIR"/*.sarif)"
+
+          if [[ "$ALERTS" -gt 0 ]]; then
+              echo "::error::CodeQL found ${ALERTS} alert(s) for language '${{ matrix.language }}'"
+              exit 1
+          fi
+
+          echo "CodeQL found no alerts for language '${{ matrix.language }}'"
 
   codeql-scan-status:
     name: CodeQL Scan
