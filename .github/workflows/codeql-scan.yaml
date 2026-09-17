@@ -4,7 +4,8 @@
 # reports any alert, regardless of its severity.
 #
 # If .github/codeql/codeql-config.yml exists in the calling repository,
-# it is automatically used as the CodeQL configuration file.
+# it is automatically used as the CodeQL configuration file. Languages with
+# no source code remaining after applying the configuration are skipped.
 # No inputs.
 #
 # Trigger it from a topic workflow, e.g.:
@@ -58,6 +59,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: CodeQL Init
+        id: init
         uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           languages: ${{ matrix.language }}
@@ -65,7 +67,60 @@ jobs:
           queries: "+security-and-quality"
           config-file: ${{ hashFiles('.github/codeql/codeql-config.yml') != '' && '.github/codeql/codeql-config.yml' || '' }}
 
+      # Language detection happens before CodeQL path filtering, so a detected
+      # language may have no source files left after applying the configuration.
+      - name: Check for source code
+        id: source-check
+        shell: bash
+        env:
+          CODEQL: ${{ steps.init.outputs.codeql-path }}
+          LANGUAGE: ${{ matrix.language }}
+          BUILD_MODE: ${{ matrix.build-mode }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$BUILD_MODE" != "none" ]]; then
+              echo "has-source=true" >>"$GITHUB_OUTPUT"
+              exit 0
+          fi
+
+          PROBE_DIR="$(mktemp -d)"
+          trap 'rm -rf "$PROBE_DIR"' EXIT
+
+          ARGS=(
+              database init
+              --db-cluster
+              --calculate-baseline
+              --language="$LANGUAGE"
+              --source-root="$GITHUB_WORKSPACE"
+          )
+
+          if [[ -f "$GITHUB_WORKSPACE/.github/codeql/codeql-config.yml" ]]; then
+              ARGS+=(--codescanning-config="$GITHUB_WORKSPACE/.github/codeql/codeql-config.yml")
+          fi
+
+          "$CODEQL" "${ARGS[@]}" -- "$PROBE_DIR/db"
+
+          BASELINE="$("$CODEQL" database print-baseline --db-cluster -- "$PROBE_DIR/db")"
+          echo "$BASELINE"
+
+          COUNT="$(sed -nE \
+              's/^Counted a baseline of ([0-9]+) lines of code for .+\.$/\1/p' \
+              <<<"$BASELINE")"
+
+          if [[ ! "$COUNT" =~ ^[0-9]+$ ]]; then
+              echo "::error::Unexpected CodeQL baseline output"
+              exit 1
+          fi
+
+          if ((COUNT == 0)); then
+              echo "has-source=false" >>"$GITHUB_OUTPUT"
+          else
+              echo "has-source=true" >>"$GITHUB_OUTPUT"
+          fi
+
       - name: CodeQL Analyze
+        if: steps.source-check.outputs.has-source == 'true'
         id: analyze
         uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
@@ -73,6 +128,7 @@ jobs:
           upload: never
 
       - name: Upload CodeQL SARIF file for GitHub Advanced Security Dashboard
+        if: steps.source-check.outputs.has-source == 'true'
         uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           category: "/language:${{ matrix.language }}"
@@ -80,6 +136,7 @@ jobs:
         continue-on-error: true
 
       - name: Generate CodeQL txt report
+        if: steps.source-check.outputs.has-source == 'true'
         shell: bash
         env:
           SARIF_DIR: ${{ steps.analyze.outputs.sarif-output }}
@@ -105,6 +162,7 @@ jobs:
           cat "codeql_${{ matrix.language }}.txt"
 
       - name: Upload CodeQL txt file as artifact
+        if: steps.source-check.outputs.has-source == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: codeql-scan-${{ matrix.language }}
@@ -112,6 +170,7 @@ jobs:
           retention-days: 7
 
       - name: Fail on CodeQL alerts
+        if: steps.source-check.outputs.has-source == 'true'
         shell: bash
         env:
           SARIF_DIR: ${{ steps.analyze.outputs.sarif-output }}
@@ -138,6 +197,6 @@ jobs:
           FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: |
           if [ "$FAILED" = "true" ]; then
-            echo "::error::A CodeQL job failed or was cancelled"
-            exit 1
+              echo "::error::A CodeQL job failed or was cancelled"
+              exit 1
           fi
