@@ -1,8 +1,9 @@
 # Reusable workflow: detect CodeQL-supported languages and run static security
 # analysis in parallel, uploading the SARIF reports to the GitHub Advanced
-# Security dashboard and the text logs as artifacts. The scan fails if CodeQL
-# reports any alert, regardless of its severity. Diff-informed analysis is
-# disabled so pull requests run a full CodeQL analysis and report all findings.
+# Security dashboard and the text logs as artifacts. The scan fails on any
+# non-suppressed CodeQL alert, regardless of severity; in-source suppressions
+# are respected. Diff-informed analysis is disabled so pull requests run a full
+# CodeQL analysis and report all findings.
 #
 # If .github/codeql/codeql-config.yml exists in the calling repository,
 # it is automatically used as the CodeQL configuration file. Languages with
@@ -139,6 +140,7 @@ jobs:
         continue-on-error: true
 
       - name: Generate CodeQL txt report
+        id: report
         if: steps.source-check.outputs.has-source == 'true'
         shell: bash
         env:
@@ -146,11 +148,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          REPORT="codeql_${{ matrix.language }}.txt"
+
           jq -r '
               .runs[] as $run
               | ($run.tool.driver.rules // []) as $rules
               | $run.results // []
               | .[]
+              | select(any(.suppressions[]?; .kind == "inSource") | not)
               | [
                   (.rule.index // .ruleIndex) as $i
                   | if $i == null then (.ruleId // "unknown")
@@ -160,9 +165,13 @@ jobs:
                   (.message.text // "" | gsub("\n"; " "))
               ]
               | join(" | ")
-          ' "$SARIF_DIR"/*.sarif >"codeql_${{ matrix.language }}.txt"
+          ' "$SARIF_DIR"/*.sarif >"$REPORT"
 
-          cat "codeql_${{ matrix.language }}.txt"
+          cat "$REPORT"
+
+          # The report contains one line per non-suppressed alert.
+          ALERTS="$(wc -l <"$REPORT" | tr -d '[:space:]')"
+          echo "alerts=$ALERTS" >>"$GITHUB_OUTPUT"
 
       - name: Upload CodeQL txt file as artifact
         if: steps.source-check.outputs.has-source == 'true'
@@ -176,11 +185,9 @@ jobs:
         if: steps.source-check.outputs.has-source == 'true'
         shell: bash
         env:
-          SARIF_DIR: ${{ steps.analyze.outputs.sarif-output }}
+          ALERTS: ${{ steps.report.outputs.alerts }}
         run: |
           set -euo pipefail
-
-          ALERTS="$(jq -s '[.[].runs[].results // [] | .[]] | length' "$SARIF_DIR"/*.sarif)"
 
           if [[ "$ALERTS" -gt 0 ]]; then
               echo "::error::CodeQL found ${ALERTS} alert(s) for language '${{ matrix.language }}'"
