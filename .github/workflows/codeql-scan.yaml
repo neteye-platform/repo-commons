@@ -1,7 +1,8 @@
 # Reusable workflow: detect CodeQL-supported languages and run static security
 # analysis in parallel, uploading the SARIF reports to the GitHub Advanced
 # Security dashboard and the text logs as artifacts. The scan fails if CodeQL
-# reports any alert, regardless of its severity.
+# reports any alert, regardless of its severity. Diff-informed analysis is
+# disabled so pull requests run a full CodeQL analysis and report all findings.
 #
 # If .github/codeql/codeql-config.yml exists in the calling repository,
 # it is automatically used as the CodeQL configuration file. Languages with
@@ -60,6 +61,8 @@ jobs:
 
       - name: CodeQL Init
         id: init
+        env:
+          CODEQL_ACTION_DIFF_INFORMED_QUERIES: "false"
         uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
         with:
           languages: ${{ matrix.language }}
