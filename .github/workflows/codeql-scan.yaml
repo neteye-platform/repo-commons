@@ -62,7 +62,6 @@ jobs:
 
       # Add alert-suppression queries so CodeQL emits SARIF suppression metadata.
       - name: Generate suppression query suite
-        id: suppression-suite
         shell: bash
         env:
           LANGUAGE: ${{ matrix.language }}
@@ -102,8 +101,6 @@ jobs:
               "    kind: alert-suppression" \
               >"$SUITE"
 
-          echo "path=$SUITE" >>"$GITHUB_OUTPUT"
-
       - name: CodeQL Init
         id: init
         env:
@@ -112,7 +109,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode == 'manual' && 'autobuild' || matrix.build-mode }}
-          queries: "+security-and-quality,${{ steps.suppression-suite.outputs.path }}"
+          queries: "+security-and-quality,./.codeql-suppression-queries.qls"
           config-file: ${{ hashFiles('.github/codeql/codeql-config.yml') != '' && '.github/codeql/codeql-config.yml' || '' }}
 
       # Language detection happens before CodeQL path filtering, so a detected
