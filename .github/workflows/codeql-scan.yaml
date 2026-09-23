@@ -60,6 +60,50 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Add alert-suppression queries so CodeQL emits SARIF suppression metadata.
+      - name: Generate suppression query suite
+        id: suppression-suite
+        shell: bash
+        env:
+          LANGUAGE: ${{ matrix.language }}
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+          CODEQL_CANDIDATES=("$RUNNER_TOOL_CACHE"/CodeQL/*/*/codeql/codeql)
+          shopt -u nullglob
+
+          if [[ ${#CODEQL_CANDIDATES[@]} -ne 1 || ! -x "${CODEQL_CANDIDATES[0]}" ]]; then
+              echo "::error::Expected exactly one CodeQL CLI in runner tool cache, found ${#CODEQL_CANDIDATES[@]}"
+              exit 1
+          fi
+
+          CODEQL="${CODEQL_CANDIDATES[0]}"
+
+          PACK_LANGUAGE="$(
+              "$CODEQL" resolve languages \
+                  --format=betterjson \
+                  --extractor-include-aliases \
+              | jq -r --arg language "$LANGUAGE" \
+                  '.aliases[$language] // (if .extractors[$language] then $language else empty end)'
+          )"
+
+          if [[ -z "$PACK_LANGUAGE" || "$PACK_LANGUAGE" == "null" ]]; then
+              echo "::error::Unable to resolve canonical CodeQL language for '$LANGUAGE'"
+              exit 1
+          fi
+
+          SUITE="$GITHUB_WORKSPACE/.codeql-suppression-queries.qls"
+
+          printf '%s\n' \
+              "- queries: ." \
+              "  from: codeql/${PACK_LANGUAGE}-queries" \
+              "- include:" \
+              "    kind: alert-suppression" \
+              >"$SUITE"
+
+          echo "path=$SUITE" >>"$GITHUB_OUTPUT"
+
       - name: CodeQL Init
         id: init
         env:
@@ -68,7 +112,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode == 'manual' && 'autobuild' || matrix.build-mode }}
-          queries: "+security-and-quality"
+          queries: "+security-and-quality,${{ steps.suppression-suite.outputs.path }}"
           config-file: ${{ hashFiles('.github/codeql/codeql-config.yml') != '' && '.github/codeql/codeql-config.yml' || '' }}
 
       # Language detection happens before CodeQL path filtering, so a detected
