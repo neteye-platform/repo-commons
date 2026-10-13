@@ -25,6 +25,14 @@
     "addLabels": ["security"]
   },
 
+  "packageRules": [
+    {
+      "description": "Update pre-commit hooks every Monday from 00:00 to 04:00 UTC",
+      "matchManagers": ["pre-commit"],
+      "schedule": ["* 0-3 * * 1"]
+    }
+  ],
+
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
 
