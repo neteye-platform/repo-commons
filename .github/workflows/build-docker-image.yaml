@@ -66,14 +66,10 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # metadata-action adds `latest` to every stable semver tag, also on an
-      # older maintained train (e.g. v1.4.2 after v2.0.0). Allow `latest` only
-      # when the current ref is the highest stable tag of the repository.
+      # Tag `latest` only on the highest stable version.
       - name: Determine latest flavor
         id: latest
         run: |
-          # Separate the remote query from the filter: a failed query must
-          # fail the step, but a filter with no match must not.
           tags="$(git ls-remote --tags --refs --sort=-v:refname origin)"
           highest="$(grep -oE 'refs/tags/v?[0-9]+\.[0-9]+\.[0-9]+$' <<< "$tags" | head -n 1)"
           echo "flavor=$([ "$GITHUB_REF" = "$highest" ] && echo auto || echo false)" >> "$GITHUB_OUTPUT"
