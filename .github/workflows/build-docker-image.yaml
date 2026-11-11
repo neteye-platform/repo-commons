@@ -72,8 +72,10 @@ jobs:
       - name: Determine latest flavor
         id: latest
         run: |
-          highest="$(git ls-remote --tags --refs --sort=-v:refname origin \
-            | grep -oE 'refs/tags/v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)"
+          # Separate the remote query from the filter: a failed query must
+          # fail the step, but a filter with no match must not.
+          tags="$(git ls-remote --tags --refs --sort=-v:refname origin)"
+          highest="$(grep -oE 'refs/tags/v?[0-9]+\.[0-9]+\.[0-9]+$' <<< "$tags" | head -n 1)"
           echo "flavor=$([ "$GITHUB_REF" = "$highest" ] && echo auto || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Extract Docker metadata
