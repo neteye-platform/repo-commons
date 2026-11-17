@@ -21,6 +21,12 @@
 
   "labels": ["dependencies", "no-stale"],
 
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**"
+  ],
+
   "vulnerabilityAlerts": {
     "addLabels": ["security"]
   },
