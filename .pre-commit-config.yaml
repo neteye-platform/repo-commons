@@ -52,7 +52,7 @@ repos:
       - id: shellcheck
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: ef6cf06c079dd6b299dfc720b0f14400c9d168e1 # frozen: v0.17.5
+    rev: 9026c9127e153371d7a78dfcb0c45ae2046a3d10 # frozen: v0.17.6
     hooks:
       - id: ruff-check
         args:
@@ -60,7 +60,7 @@ repos:
       - id: ruff-format
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: b9d5257d60a86c20fd9a3919d548e08ba5ab905b # frozen: 0.13.8
+    rev: 00eaed0068329eb6ca6bcb8de7b46c372d8d1c19 # frozen: 0.13.9
     hooks:
       - id: uv-lock
 
@@ -80,7 +80,7 @@ repos:
       - id: markdownlint-cli2
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: e52bcb59c89a2609dd34e26e31d01fb9f041d128 # frozen: 44.248.0
+    rev: 9917e7d6e294d8125f2822276e18f342f55b7f17 # frozen: 44.255.2
     hooks:
       - id: renovate-config-validator
         args: [--strict]
