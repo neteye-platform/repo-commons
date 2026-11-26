@@ -33,7 +33,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # ImageOS in the prefix: prek does not health-check Go binaries built on another OS release.
+      - name: Compute prek cache key
+        id: prek-cache-key
+        env:
+          CONFIG_HASH: ${{ hashFiles('**/prek.toml', '**/.pre-commit-config.yaml') }}
+        run: |
+          prefix="prek-${RUNNER_OS}-${RUNNER_ARCH}-${ImageOS:-unknown}-"
+          echo "prefix=${prefix}" >> "$GITHUB_OUTPUT"
+          echo "key=${prefix}${ImageVersion:-unknown}-${CONFIG_HASH}" >> "$GITHUB_OUTPUT"
+
+      # Own cache instead of prek-action's: it has no restore-keys.
+      - name: Restore prek cache
+        id: prek-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/prek
+          key: ${{ steps.prek-cache-key.outputs.key }}
+          restore-keys: ${{ steps.prek-cache-key.outputs.prefix }}
+
       - name: Run common pre-commit checks
         uses: j178/prek-action@7b101f8338a08d2bd6fdb3625e4e7692428763a3 # v3.1.1
         with:
+          cache: false
           extra-args: "--all-files --refresh --no-group no-ci"
+
+      - name: Save prek cache
+        if: ${{ success() && steps.prek-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/prek
+          key: ${{ steps.prek-cache.outputs.cache-primary-key }}
