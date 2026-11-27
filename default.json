@@ -35,7 +35,10 @@
     {
       "description": "Update pre-commit hooks every Monday from 00:00 to 04:00 UTC",
       "matchManagers": ["pre-commit"],
-      "schedule": ["* 0-3 * * 1"]
+      "groupName": "pre-commit hooks",
+      "separateMajorMinor": false,
+      "schedule": ["* 0-3 * * 1"],
+      "updateNotScheduled": false
     }
   ],
 
